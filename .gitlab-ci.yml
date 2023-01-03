@@ -1,0 +1,42 @@
+stages:
+  - build
+  - publish
+
+.default:
+  image: maven:3-jdk-8
+  tags:
+    - pool_name:cellbase
+  rules:
+    - if: $CI_PIPELINE_SOURCE =~ /^web$/
+
+cellbase:
+  extends: .default
+  stage: build
+  script:
+    - java -version
+    - mvn clean install -DskipTests
+  cache:
+    key: maven_cache
+    paths:
+      - .m2/
+  artifacts:
+    paths:
+      - ./
+    expire_in: 1 week
+
+# See: https://docs.gitlab.com/ee/user/packages/maven_repository/index.html#create-maven-packages-with-gitlab-cicd
+package_repository:
+  extends: .default
+  stage: publish
+  script:
+    - java -version
+    # Updating pom.xml can be done in a more elegant way when time allows:
+    - |
+      sed -i \
+        -e  's#<id>ossrh#<id>gitlab-maven#' \
+        -e 's#https://oss.sonatype.org/content/repositories/snapshots#${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/maven#' \
+        -e 's#https://oss.sonatype.org/service/local/staging/deploy/maven2/#${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/maven#' \
+        -e 's#</project>##' \
+        pom.xml
+      cat ci_repositories.xml >> pom.xml
+    - mvn deploy -s ci_settings.xml -DskipTests
